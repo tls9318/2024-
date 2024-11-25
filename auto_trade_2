@@ -1,0 +1,137 @@
+access_token = get_access_token()
+
+print(f'{inquire_price(access_token, appkey, appsecret, code="111V06")}원')
+
+print(get_stock_balance(access_token, appkey, appsecret))
+
+samsung_elec_cur_price = inquire_price(access_token, appkey, appsecret, code="111V06")
+
+col_list = ['시가', '고가', '저가', '종가', '종가 단순 5', '10', '20', '60', '120']
+
+csv_file = pd.read_csv('./삼성전자.csv')
+csv_file = csv_file[col_list][:-120]
+
+csv_file = np.flip(np.array(csv_file))
+
+col_list = ['시가', '고가', '저가', '종가', '종가 단순 5', '10', '20', '60', '120']
+
+csv_file = pd.read_csv('./삼성전자.csv')
+csv_file = csv_file[col_list][:-120]
+
+csv_file = np.flip(np.array(csv_file))
+
+data = np.load('./data.npy')
+data = list(data)
+pred_1 = np.load('./pred_1.npy')
+#pred_1 = list(pred_1)
+
+col_list = ['시가', '고가', '저가', '종가', '종가 단순 5', '10', '20', '60', '120']
+model = load_model('./SAMSUNG_target_domain.hdf5')
+model.summary()
+
+import datetime
+import time
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+
+today_price = [75300, 75700, 74000]
+today_feature = []
+code = ["111V06"]
+a = 1
+
+while True:
+    try:
+        t_now = datetime.datetime.now()
+        t_start = datetime.datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
+        t_exit = datetime.datetime.now().replace(hour=15, minute=35, second=0, microsecond=0)
+        t_trade = datetime.datetime.now().replace(hour=15, minute=15, second=10, microsecond=0)
+        t_get_token_s = datetime.datetime.now().replace(hour=8, minute=55, second=0, microsecond=0)
+        t_get_token_e = datetime.datetime.now().replace(hour=8, minute=55, second=2, microsecond=0)
+        today = datetime.datetime.today().weekday()
+
+        if today == 5 or today == 6:  # 토요일이나 일요일이면 자동 종료
+            break
+
+        if t_get_token_e >= t_now >= t_get_token_s and a == 1:
+            ACCESS_TOKEN = get_access_token()
+            a += 1
+
+        if t_start < t_now < t_trade:  # AM 09:00 ~ PM 03:30 : 매수
+            samsung_elec_cur_price = int(inquire_price(access_token, appkey, appsecret, code=code[0]))
+            today_price.append(samsung_elec_cur_price)
+            time.sleep(0.95)
+
+        if t_trade < t_now < t_exit:
+            have = get_stock_balance(access_token, appkey, appsecret)
+            
+            scaler = joblib.load('./scaler.pkl')
+
+            today_feature.append([today_price[0], np.max(today_price), np.min(today_price), today_price[-1], 
+                         get_mal(csv_file, today_price[-1], 5), get_mal(csv_file, today_price[-1], 10), 
+                         get_mal(csv_file, today_price[-1], 20), get_mal(csv_file, today_price[-1], 60), 
+                         get_mal(csv_file, today_price[-1], 120)])
+
+            today_feature = np.array(today_feature).reshape(1, -1)
+
+            today_feature = scaler.transform(today_feature)
+
+            today_feature = np.array(today_feature).reshape(1, -1)
+
+            today_feature = today_feature.tolist()
+
+            data_p = data + today_feature
+
+            pred = model.predict(np.array(data_p[-50:]).reshape(1, -1, 9))
+
+            if pred > pred_1[-1] and have.get(code[0], 0) < 0:
+                buy_order(ACCESS_TOKEN, appkey, appsecret, code=code[0], price=str(samsung_elec_cur_price))
+                buy_order(ACCESS_TOKEN, appkey, appsecret, code=code[0], price=str(samsung_elec_cur_price))
+            elif pred < pred_1[-1] and have.get(code[0], 0) > 0:
+                sell_order(ACCESS_TOKEN, appkey, appsecret, code=code[0], price=str(samsung_elec_cur_price))
+                sell_order(ACCESS_TOKEN, appkey, appsecret, code=code[0], price=str(samsung_elec_cur_price))
+            elif pred < pred_1[-1] and have.get(code[0], 0) < 0:
+                pass
+            elif pred > pred_1[-1] and have.get(code[0], 0) > 0:
+                pass
+
+            #time.sleep(40)
+
+    # except KeyboardInterrupt:
+    #     print("프로그램을 종료합니다.")
+    #     break
+
+    except Exception as e:
+        print(f"Error: {e}")
+        time.sleep(1)
+
+
+pred_2 = np.concatenate([pred_1, pred], axis=0)
+
+pred_2.shape
+
+np.save('./data.npy', data_p)
+
+np.save('./pred_1.npy', pred_2)
+
+pred_1 = np.array(pred_1)
+pred_1.shape
+
+np.array(pred_1).shape
+
+pred_2 = pred_1 + pred
+
+np.array(pred_1).shape
+
+adws
+
+inquire_price(access_token, appkey, appsecret, code="111V06")
+
+have = get_stock_balance(access_token, appkey, appsecret)
+have.get(code[0], 0)
+
+today_price
+
+np.save('./data.npy', data)
+
+pred_1.append(pred)
+np.save('./pred_1.npy')
