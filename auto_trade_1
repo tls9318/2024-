@@ -1,0 +1,193 @@
+import requests
+import json
+import datetime
+import yaml
+import time
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from tensorflow.keras import layers, models, optimizers
+import matplotlib.pyplot as plt
+from tensorflow.keras.models import load_model
+from sklearn.metrics import mean_absolute_error
+from sklearn.preprocessing import MinMaxScaler
+import joblib
+
+with open('futuretradinginvestment.yaml', encoding='UTF-8') as f:
+    _cfg = yaml.load(f, Loader=yaml.FullLoader)
+appkey = _cfg['appkey'] #앱키
+appsecret = _cfg['appsecret'] #시크릿 키
+ACCESS_TOKEN = "" # 접근토큰 | 일반개인고객 : 유효기간 1일
+cano = _cfg['CANO'] #계좌번호 앞 6자리
+acnt_prdt_cd = _cfg['ACNT_PRDT_CD'] #계좌번호 뒤 2자리
+DISCORD_WEBHOOK_URL = _cfg['DISCORD_WEBHOOK_URL']
+
+  def send_message(msg):
+    """디스코드 메세지 전송"""
+    now = datetime.datetime.now()
+    message = {"content": f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] {str(msg)}"}
+    requests.post(DISCORD_WEBHOOK_URL, data=message)
+    print(message)
+    #send_message("")를 사용하시면 디스코드에 뜸
+
+      def get_websocket_access_token():
+    """웹소켓 접속키 발급"""
+    url = "https://openapivts.koreainvestment.com:29443/oauth2/Approval"
+    payload = json.dumps({
+      "grant_type": "client_credentials", #권한부여type
+      "appkey": appkey,
+      "secretkey": appsecret
+    })
+    headers = {
+      "content-type": "application/json" #컨텐츠타입
+    }
+    response = requests.post(url, headers=headers, data=payload)
+    if response.status_code == 200: # 200은 true 의미
+        return response.json()['access_token']
+    else:
+        return None
+
+      def get_access_token():
+    """ACCESS TOKEN 발급"""
+    url = "https://openapivts.koreainvestment.com:29443/oauth2/tokenP"
+    payload = json.dumps({
+      "grant_type": "client_credentials",
+      "appkey": appkey,
+      "appsecret": appsecret
+    })
+    headers = {
+      'content-type': 'application/json'
+    }
+    response = requests.request("POST", url, headers=headers, data=payload)
+    if response.status_code == 200:
+        return response.json()['access_token']
+    else:
+        return None
+
+      def get_hashkey(payload, appkey, appsecret):
+    """해쉬키 발급"""
+    url = "https://openapivts.koreainvestment.com:29443/uapi/hashkey"
+    headers = {
+      "content-type": "application/json",
+      "appkey": appkey,
+      "appsecret": appsecret
+    }
+    response = requests.request("POST", url, headers=headers, data=json.dumps(payload))
+    if response.status_code == 200:
+        return response.json()['HASH']
+    else:
+        return None
+
+      def inquire_price(access_token, appkey, appsecret, code=""):
+    """선물옵션 시세 조회"""
+    url = f"https://openapivts.koreainvestment.com:29443/uapi/domestic-futureoption/v1/quotations/inquire-price"
+    headers = {
+      "content-type": "application/json",
+      "authorization": f"Bearer {access_token}", # 접근토큰 | 토큰지정시 토큰타입 (Bearer) 지정 필요
+      "appkey": appkey,
+      "appsecret": appsecret,
+      "tr_id": "FHMIF10000000" #tr_id : 거래 id | 선물옵션 시세
+    }
+    params = {
+      "fid_cond_mrkt_div_code" : "JF", #fid 조건 시장 분류 코드 | F: 지수선물
+      "fid_input_iscd" : code, #fid 입력종목코드
+    }
+    response = requests.request("GET", url, headers=headers, params=params)
+    #print(response.json())
+
+    return response.json()['output1']['futs_prpr']
+
+      def get_stock_balance(access_token, appkey, appsecret):
+    """선물 잔고조회"""
+    url = f"https://openapivts.koreainvestment.com:29443/uapi/domestic-futureoption/v1/trading/inquire-balance"
+    headers = {
+      "content-type": "application/json",
+      "authorization": f"Bearer {access_token}",
+      "appkey": appkey,
+      "appsecret": appsecret,
+      "tr_id": "VTFO6118R" #선물옵션 잔고현황
+    }
+    params = {
+      "CANO" : cano, #계좌번호 앞 6자리
+      "ACNT_PRDT_CD" : acnt_prdt_cd, #계좌번호 뒤 2자리
+      "MGNA_DVSN" : "01", # 증거금 구분 | 01: 개시, 02: 유지
+      "EXCC_STAT_CD" : "1", #정산상태 코드 | 1: 정산, 2: 본정산
+      "CTX_AREA_FK200" : "", #연속조회검색조건200
+      "CTX_AREA_NK200" : "", #연속조회키 | params는 건들 필요 없음.
+    }
+    res = requests.get(url, headers=headers, params=params)
+    stock_list = res.json()['output1']
+    evaluation = res.json()['output2']
+    stock_dict = {}
+    for stock in stock_list:
+        if int(stock['cblc_qty']) > 0:
+            if stock['sll_buy_dvsn_name'] == '매도':
+                stock_dict[stock['shtn_pdno']] = '-' + stock['cblc_qty']
+            else:
+                stock_dict[stock['shtn_pdno']] = stock['cblc_qty']
+    #print(res.json())
+    #if res.json()['rt_cd'] == '0':
+        #print(res.json()['rt_cd'])
+    return stock_dict
+
+# [실전투자]
+# CTFO6118R : 선물 옵션 잔고 현황
+
+# [모의투자]
+# VTFO6118R : 선물 옵션 잔고 현황
+
+  def buy_order(access_token, appkey, appsecret, code="111V06", price=""):
+    """매수 주문"""
+    url = "https://openapivts.koreainvestment.com:29443/uapi/domestic-futureoption/v1/trading/order"
+    payload = {
+      "ORD_PRCS_DVSN_CD": "02", #주문처리 구분 코드 | 02: 주문전송
+      "CANO": cano,
+      "ACNT_PRDT_CD": acnt_prdt_cd,
+      "SLL_BUY_DVSN_CD": "02", #매도매수 구분코드 | 01: 매도, 02: 매수
+      "SHTN_PDNO": code, #단축상품번호 선물 6자리
+      "ORD_QTY": "1", # 주문 수량
+      "UNIT_PRICE": "0", # 주문 가격
+      "NMPR_TYPE_CD": "01", #호가유형코드 01: 지정가, 02: 시장가
+      "KRX_NMPR_CNDT_CD": "0", #안 건드려도 됨. IOC랑 FOK가 있는데 이걸로 바꾸면 바꿀게 많아짐
+      "ORD_DVSN_CD": "02" #주문구분코드 01: 지정가, 02: 시장가
+    }
+    headers = {
+      "content-type": "application/json",
+      "authorization": f"Bearer {access_token}",
+      "appkey": appkey,
+      "appsecret": appsecret,
+      "tr_id": "VTTO1101U" #선물옵션 매수 매도 주문 주간
+    }
+    hashkey = get_hashkey(payload, appkey, appsecret)
+    headers['hashkey'] = hashkey
+    response = requests.request("POST", url, headers=headers, data=json.dumps(payload))
+    return response.json()
+
+      def sell_order(access_token, appkey, appsecret, code="111V06", price=""):
+    """매도 주문"""
+    url = "https://openapivts.koreainvestment.com:29443/uapi/domestic-futureoption/v1/trading/order"
+    payload = {
+      "ORD_PRCS_DVSN_CD": "02", #매도매수 구분코드 | 01: 매도, 02: 매수
+      "CANO": cano,
+      "ACNT_PRDT_CD": acnt_prdt_cd,
+      "SLL_BUY_DVSN_CD": "01", #매도매수 구분코드 | 01: 매도, 02: 매수
+      "SHTN_PDNO": code,  #단축상품번호 선물 6자리
+      "ORD_QTY": "1", #주문수량
+      "UNIT_PRICE": "0", #주문가격
+      "NMPR_TYPE_CD": "01", #호가유형코드 01: 지정가, 02: 시장가
+      "KRX_NMPR_CNDT_CD": "0", ##안 건드려도 됨. IOC랑 FOK가 있는데 이걸로 바꾸면 바꿀게 많아짐
+      "ORD_DVSN_CD": "02" ##주문구분코드 01: 지정가, 02: 시장가
+    }
+    headers = {
+      "content-type": "application/json",
+      "authorization": f"Bearer {access_token}",
+      "appkey": appkey,
+      "appsecret": appsecret,
+      "tr_id": "VTTO1101U" ##선물옵션 매수 매도 주문 주간
+    }
+    hashkey = get_hashkey(payload, appkey, appsecret)
+    headers['hashkey'] = hashkey
+    response = requests.request("POST", url, headers=headers, data=json.dumps(payload))
+    return response.json()
