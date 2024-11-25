@@ -1,0 +1,11 @@
+#홈페이지에서 API서비스 신청시 받은 Appkey, Appsecret 값 설정
+appkey: "#개인보안상 공백 처리"
+appsecret: "#개인보안상 공백 처리"
+
+#계좌번호 앞 8자리
+CANO: "#개인보안상 공백 처리"
+#계좌번호 뒤 2자리
+ACNT_PRDT_CD: "#개인보안상 공백 처리"
+
+#디스코드 웹훅 URL
+DISCORD_WEBHOOK_URL: "#개인보안상 공백 처리"
